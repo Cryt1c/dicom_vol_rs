@@ -1,5 +1,5 @@
-use dicom_object::open_file;
-use dicom_pixeldata::PixelDecoder;
+use dicom_object::{open_file, DefaultDicomObject};
+use dicom_pixeldata::{PixelDecoder, DecodedPixelData};
 use ndarray::Axis;
 use three_d::*;
 
@@ -28,8 +28,8 @@ async fn run() {
 
     let mut control = OrbitControl::new(*camera.target(), 0.25, 100.0);
 
-    let mut decoded_pixel_data = Vec::new();
-    let mut files = Vec::new();
+    let mut decoded_pixel_data: Vec<DecodedPixelData> = Vec::with_capacity(295);
+    let mut files: Vec<DefaultDicomObject> = Vec::with_capacity(295);
 
     for i in 1..=295 {
         let file_name = format!("examples/assets/DCM_0000/CT{:06}", i);
