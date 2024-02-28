@@ -1,5 +1,5 @@
-use dicom_object::{open_file, DefaultDicomObject};
-use dicom_pixeldata::{PixelDecoder, DecodedPixelData};
+use dicom_object::open_file;
+use dicom_pixeldata::PixelDecoder;
 use ndarray::Axis;
 use three_d::*;
 
@@ -28,25 +28,31 @@ async fn run() {
 
     let mut control = OrbitControl::new(*camera.target(), 0.25, 100.0);
 
-    let mut decoded_pixel_data: Vec<DecodedPixelData> = Vec::with_capacity(295);
-    let mut files: Vec<DefaultDicomObject> = Vec::with_capacity(295);
+    let files = std::fs::read_dir("examples/assets/DCM_0000").unwrap();
+    let mut sorted_files: Vec<_> = files.filter_map(Result::ok).collect();
+    sorted_files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
 
-    for i in 1..=295 {
-        let file_name = format!("examples/assets/DCM_0000/CT{:06}", i);
-        let file = open_file(&file_name).unwrap();
-        files.push(file);
-    }
-    for file in files.iter() {
+    let mut file_count = 0;
+    let loaded_files: Vec<_> = sorted_files
+        .iter()
+        .map(|file| {
+            let file_name = file.file_name();
+            let file_name = file_name.to_str().unwrap();
+            let file = open_file(&format!("examples/assets/DCM_0000/{}", file_name)).unwrap();
+            file_count += 1;
+            return file;
+        })
+        .collect();
+    let decoded_pixel_data = loaded_files.iter().map(|file| {
         let pixel_data = file.decode_pixel_data().unwrap();
-        decoded_pixel_data.push(pixel_data);
-    }
+        return pixel_data;
+    });
+
     let arrays: Vec<_> = decoded_pixel_data
         .into_iter()
         .map(|data| data.to_ndarray::<f16>().unwrap())
         .collect();
-
     let array_views: Vec<_> = arrays.iter().map(|array| array.view()).collect();
-
     let concat_array = ndarray::stack(Axis(2), &array_views).unwrap();
 
     let cpu_voxel_grid = CpuVoxelGrid {
@@ -55,7 +61,7 @@ async fn run() {
             data: TextureData::RF16(concat_array.into_raw_vec()),
             width: 512,
             height: 512,
-            depth: 295,
+            depth: file_count,
             min_filter: Interpolation::Linear,
             mag_filter: Interpolation::Linear,
             wrap_s: Wrapping::Repeat,
