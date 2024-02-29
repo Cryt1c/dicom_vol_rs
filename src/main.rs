@@ -1,6 +1,7 @@
 use dicom_object::open_file;
 use dicom_pixeldata::PixelDecoder;
-use ndarray::Axis;
+use ndarray::{ArrayBase, Axis, Dim, OwnedRepr};
+use rayon::prelude::*;
 use three_d::*;
 
 #[tokio::main]
@@ -33,6 +34,8 @@ async fn run() {
     sorted_files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
 
     let mut file_count = 0;
+
+    let now = std::time::Instant::now();
     let loaded_files: Vec<_> = sorted_files
         .iter()
         .map(|file| {
@@ -43,18 +46,34 @@ async fn run() {
             return file;
         })
         .collect();
-    let decoded_pixel_data = loaded_files.iter().map(|file| {
-        let pixel_data = file.decode_pixel_data().unwrap();
-        return pixel_data;
-    });
+    println!("File load time: {:?}", now.elapsed());
 
-    let arrays: Vec<_> = decoded_pixel_data
-        .into_iter()
+    let now = std::time::Instant::now();
+    let decoded_pixel_data = loaded_files
+        .par_iter()
+        .map(|file| {
+            let pixel_data = file.decode_pixel_data().unwrap();
+            return pixel_data;
+        })
+        .collect::<Vec<_>>();
+    println!("Decode pixel time: {:?}", now.elapsed());
+
+    let now = std::time::Instant::now();
+    let arrays: Vec<ArrayBase<OwnedRepr<f16>, Dim<[usize; 4]>>> = decoded_pixel_data
+        .into_par_iter()
         .map(|data| data.to_ndarray::<f16>().unwrap())
         .collect();
-    let array_views: Vec<_> = arrays.iter().map(|array| array.view()).collect();
-    let concat_array = ndarray::stack(Axis(2), &array_views).unwrap();
+    println!("Convert to ndarray time: {:?}", now.elapsed());
 
+    let now = std::time::Instant::now();
+    let array_views: Vec<_> = arrays.iter().map(|array| array.view()).collect();
+    println!("Array view time: {:?}", now.elapsed());
+
+    let now = std::time::Instant::now();
+    let concat_array = ndarray::stack(Axis(2), &array_views).unwrap();
+    println!("Concat time: {:?}", now.elapsed());
+
+    let now = std::time::Instant::now();
     let cpu_voxel_grid = CpuVoxelGrid {
         voxels: CpuTexture3D {
             name: "sample".to_string(),
@@ -80,6 +99,8 @@ async fn run() {
     // main loop
     let mut gui = three_d::GUI::new(&context);
     let mut color = [1.0; 4];
+    println!("Render prep time: {:?}", now.elapsed());
+
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
         gui.update(
@@ -125,4 +146,11 @@ async fn run() {
 
         FrameOutput::default()
     });
+}
+
+fn measure_time<T, F: FnOnce() -> T>(f: F) -> T {
+    let now = std::time::Instant::now();
+    let result = f();
+    println!("Time: {:?}", now.elapsed());
+    return result;
 }

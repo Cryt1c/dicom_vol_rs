@@ -11,6 +11,7 @@ dicom-object = "0.6.3"
 dicom-pixeldata = { version = "0.2", features = ["image", "ndarray"] }
 ndarray = "0.15.6"
 ndarray-stats = "0.5.1"
+rayon = "1.9.0"
 three-d = { version="0.16.3", features=["egui-gui"] }
 three-d-asset = {version = "0.6", features = ["vol"] }
 tokio = { version="1.35.1", features=["full"] }
