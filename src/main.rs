@@ -35,43 +35,55 @@ async fn run() {
 
     let mut file_count = 0;
 
-    let now = std::time::Instant::now();
-    let loaded_files: Vec<_> = sorted_files
-        .iter()
-        .map(|file| {
-            let file_name = file.file_name();
-            let file_name = file_name.to_str().unwrap();
-            let file = open_file(&format!("examples/assets/DCM_0000/{}", file_name)).unwrap();
-            file_count += 1;
-            return file;
-        })
-        .collect();
-    println!("File load time: {:?}", now.elapsed());
+    let loaded_files: Vec<_> = measure_time(
+        || {
+            sorted_files
+                .iter()
+                .map(|file| {
+                    let file_name = file.file_name();
+                    let file_name = file_name.to_str().unwrap();
+                    let file =
+                        open_file(&format!("examples/assets/DCM_0000/{}", file_name)).unwrap();
+                    file_count += 1;
+                    return file;
+                })
+                .collect()
+        },
+        "File load time",
+    );
 
-    let now = std::time::Instant::now();
-    let decoded_pixel_data = loaded_files
-        .par_iter()
-        .map(|file| {
-            let pixel_data = file.decode_pixel_data().unwrap();
-            return pixel_data;
-        })
-        .collect::<Vec<_>>();
-    println!("Decode pixel time: {:?}", now.elapsed());
+    let decoded_pixel_data = measure_time(
+        || {
+            loaded_files
+                .par_iter()
+                .map(|file| {
+                    let pixel_data = file.decode_pixel_data().unwrap();
+                    return pixel_data;
+                })
+                .collect::<Vec<_>>()
+        },
+        "Decode pixel time",
+    );
 
-    let now = std::time::Instant::now();
-    let arrays: Vec<ArrayBase<OwnedRepr<f16>, Dim<[usize; 4]>>> = decoded_pixel_data
-        .into_par_iter()
-        .map(|data| data.to_ndarray::<f16>().unwrap())
-        .collect();
-    println!("Convert to ndarray time: {:?}", now.elapsed());
+    let arrays: Vec<ArrayBase<OwnedRepr<f16>, Dim<[usize; 4]>>> = measure_time(
+        || {
+            decoded_pixel_data
+                .into_par_iter()
+                .map(|data| data.to_ndarray::<f16>().unwrap())
+                .collect()
+        },
+        "Convert to ndarray time",
+    );
 
-    let now = std::time::Instant::now();
-    let array_views: Vec<_> = arrays.iter().map(|array| array.view()).collect();
-    println!("Array view time: {:?}", now.elapsed());
+    let array_views: Vec<_> = measure_time(
+        || arrays.iter().map(|array| array.view()).collect(),
+        "Create views time",
+    );
 
-    let now = std::time::Instant::now();
-    let concat_array = ndarray::stack(Axis(2), &array_views).unwrap();
-    println!("Concat time: {:?}", now.elapsed());
+    let concat_array = measure_time(
+        || ndarray::stack(Axis(2), &array_views).unwrap(),
+        "Concat time",
+    );
 
     let now = std::time::Instant::now();
     let cpu_voxel_grid = CpuVoxelGrid {
@@ -96,7 +108,6 @@ async fn run() {
     let directional1 = DirectionalLight::new(&context, 2.0, Srgba::WHITE, &vec3(-1.0, -1.0, -1.0));
     let directional2 = DirectionalLight::new(&context, 2.0, Srgba::WHITE, &vec3(1.0, 1.0, 1.0));
 
-    // main loop
     let mut gui = three_d::GUI::new(&context);
     let mut color = [1.0; 4];
     println!("Render prep time: {:?}", now.elapsed());
@@ -113,7 +124,7 @@ async fn run() {
                 SidePanel::left("side_panel").show(gui_context, |ui| {
                     ui.heading("Debug Panel");
                     ui.add(
-                        Slider::new(&mut voxel_grid.material.threshold, 0.0..=1024.0)
+                        Slider::new(&mut voxel_grid.material.threshold, -1000.0..=3000.0)
                             .text("Threshold"),
                     );
                     ui.color_edit_button_rgba_unmultiplied(&mut color);
@@ -148,9 +159,9 @@ async fn run() {
     });
 }
 
-fn measure_time<T, F: FnOnce() -> T>(f: F) -> T {
+fn measure_time<T, F: FnOnce() -> T>(f: F, name: &str) -> T {
     let now = std::time::Instant::now();
     let result = f();
-    println!("Time: {:?}", now.elapsed());
+    println!("{}: {:?}", name, now.elapsed());
     return result;
 }
